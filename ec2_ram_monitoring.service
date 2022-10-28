@@ -1,0 +1,9 @@
+[Unit]
+Description=EC2 RAM monitoring
+
+[Service]
+ExecStart=/usr/local/bin/ec2_ram_monitoring
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
