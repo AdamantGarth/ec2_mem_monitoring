@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,13 +19,16 @@ import (
 )
 
 func getMemAvailable(s *bufio.Scanner) (int, error) {
-	memAvailable := 0
 	for s.Scan() {
-		if found, _ := fmt.Sscanf(s.Text(), "MemAvailable: %d kB", &memAvailable); found > 0 {
-			break
+		line := s.Text()
+		if strings.HasPrefix(line, "MemAvailable:") {
+			return strconv.Atoi(strings.TrimSpace(strings.TrimSuffix(line[len("MemAvailable:"):], "kB")))
 		}
 	}
-	return memAvailable, s.Err()
+	if err := s.Err(); err != nil {
+		return 0, err
+	}
+	return 0, errors.New("failed to parse /proc/meminfo")
 }
 
 func getMetadata(metadataClient *imds.Client, path string) (string, error) {
@@ -71,10 +77,10 @@ func main() {
 		procMeminfo.Seek(0, 0)
 		memAvailable, err := getMemAvailable(meminfoScanner)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Getting RAM info failed:", err)
+			fmt.Fprintln(os.Stderr, "Failed to get MemAvailable:", err)
 			os.Exit(1)
 		}
-		fmt.Println("Sending the metric, value:", memAvailable/1024)
+		// fmt.Println("Sending MemAvailable:", memAvailable/1024)
 		_, err = cloudwatchClient.PutMetricData(context.Background(), &cloudwatch.PutMetricDataInput{
 			Namespace: aws.String("Custom/EC2"),
 			MetricData: []types.MetricDatum{
