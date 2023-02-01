@@ -4,6 +4,7 @@ Description=EC2 RAM monitoring
 [Service]
 ExecStart=/usr/local/bin/ec2_ram_monitoring
 Restart=on-failure
+RestartSec=60
 
 [Install]
 WantedBy=multi-user.target

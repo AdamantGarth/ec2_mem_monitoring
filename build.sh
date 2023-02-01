@@ -2,7 +2,7 @@
 set -xeu
 
 if test main.go -nt ec2_ram_monitoring; then
-	go build -ldflags="-w -s"
+	CGO_ENABLED=0 go build -ldflags="-w -s"
 fi
 
 if test ec2_ram_monitoring -nt ec2_ram_monitoring.tar.gz || test ec2_ram_monitoring.service -nt ec2_ram_monitoring.tar.gz; then
