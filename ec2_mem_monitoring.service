@@ -2,7 +2,7 @@
 Description=EC2 RAM monitoring
 
 [Service]
-ExecStart=/usr/local/bin/ec2_ram_monitoring
+ExecStart=/usr/local/bin/ec2_mem_monitoring
 Restart=on-failure
 RestartSec=60
 

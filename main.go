@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	"golang.org/x/sys/unix"
 )
 
 func getMemAvailable(s *bufio.Scanner) (int, error) {
@@ -29,6 +30,15 @@ func getMemAvailable(s *bufio.Scanner) (int, error) {
 		return 0, err
 	}
 	return 0, errors.New("failed to parse /proc/meminfo")
+}
+
+func getDiskAvailable(path string) (uint64, error) {
+	var statfs unix.Statfs_t
+	err := unix.Statfs(path, &statfs)
+	if err != nil {
+		return 0, err
+	}
+	return statfs.Bavail * uint64(statfs.Frsize) / 1024, err // return kilobytes, for consistence with MemAvailable
 }
 
 func getMetadata(metadataClient *imds.Client, path string) (string, error) {
@@ -48,6 +58,8 @@ func main() {
 		os.Exit(1)
 	}
 	meminfoScanner := bufio.NewScanner(procMeminfo)
+
+	monitorDisk := os.Getenv("MONITOR_DISK") // Value is a path to monitor
 
 	metadataClient := imds.New(imds.Options{})
 	credentialsProvider := ec2rolecreds.New() // Only use EC2 instance credentials
@@ -80,18 +92,32 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Failed to get MemAvailable:", err)
 			os.Exit(1)
 		}
-		// fmt.Println("Sending MemAvailable:", memAvailable/1024)
-		_, err = cloudwatchClient.PutMetricData(context.Background(), &cloudwatch.PutMetricDataInput{
-			Namespace: aws.String("Custom/EC2"),
-			MetricData: []types.MetricDatum{
-				{
-					MetricName: aws.String("MemAvailable"),
-					Dimensions: []types.Dimension{{Name: aws.String("InstanceId"), Value: &instanceId}},
-					Timestamp:  &timestamp,
-					Value:      aws.Float64(float64(memAvailable / 1024)),
-					Unit:       types.StandardUnitMegabytes,
-				},
+		metrics := []types.MetricDatum{
+			{
+				MetricName: aws.String("MemAvailable"),
+				Dimensions: []types.Dimension{{Name: aws.String("InstanceId"), Value: &instanceId}},
+				Timestamp:  &timestamp,
+				Value:      aws.Float64(float64(memAvailable / 1024)),
+				Unit:       types.StandardUnitMegabytes,
 			},
+		}
+		if monitorDisk != "" {
+			diskAvailable, err := getDiskAvailable(monitorDisk)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Failed to get DiskAvailable:", err)
+				os.Exit(1)
+			}
+			metrics = append(metrics, types.MetricDatum{
+				MetricName: aws.String("DiskAvailable"),
+				Dimensions: []types.Dimension{{Name: aws.String("InstanceId"), Value: &instanceId}},
+				Timestamp:  &timestamp,
+				Value:      aws.Float64(float64(diskAvailable / 1024)),
+				Unit:       types.StandardUnitMegabytes,
+			})
+		}
+		_, err = cloudwatchClient.PutMetricData(context.Background(), &cloudwatch.PutMetricDataInput{
+			Namespace:  aws.String("Custom/EC2"),
+			MetricData: metrics,
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Sending the metric failed, ", err)
