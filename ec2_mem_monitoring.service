@@ -1,5 +1,5 @@
 [Unit]
-Description=EC2 RAM monitoring
+Description=EC2 memory monitoring
 
 [Service]
 ExecStart=/usr/local/bin/ec2_mem_monitoring
